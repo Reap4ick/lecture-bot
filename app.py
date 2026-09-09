@@ -27,17 +27,17 @@ def _find_translation_route():
     global _translation_available, _translation_route
     import argostranslate.translate as argos_translate
     installed_languages = argos_translate.get_installed_languages()
-    translations = {}
-    for language in installed_languages:
-        for translation in getattr(language, "translations", []):
-            source = getattr(getattr(translation, "from_lang", None), "code", None)
-            target = getattr(getattr(translation, "to_lang", None), "code", None)
-            if source and target:
-                translations[(source, target)] = translation
-    if ("sk", "uk") in translations:
-        _translation_route = (translations[("sk", "uk")],)
-    elif ("sk", "en") in translations and ("en", "uk") in translations:
-        _translation_route = (translations[("sk", "en")], translations[("en", "uk")])
+    language_map = {language.code: language for language in installed_languages}
+    _translation_route = None
+    if "sk" in language_map and "uk" in language_map:
+        direct = language_map["sk"].get_translation(language_map["uk"])
+        if direct:
+            _translation_route = (direct,)
+    if _translation_route is None and all(code in language_map for code in ("sk", "en", "uk")):
+        first = language_map["sk"].get_translation(language_map["en"])
+        second = language_map["en"].get_translation(language_map["uk"])
+        if first and second:
+            _translation_route = (first, second)
     _translation_available = _translation_route is not None
     return _translation_route
 
