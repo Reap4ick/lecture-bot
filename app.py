@@ -20,7 +20,11 @@ _model = None
 _model_lock = threading.Lock()
 _translation_available = False
 _translation_route = None
-try:
+_translation_lock = threading.Lock()
+
+
+def _find_translation_route():
+    global _translation_available, _translation_route
     import argostranslate.translate as argos_translate
     installed_languages = argos_translate.get_installed_languages()
     translations = {}
@@ -35,9 +39,45 @@ try:
     elif ("sk", "en") in translations and ("en", "uk") in translations:
         _translation_route = (translations[("sk", "en")], translations[("en", "uk")])
     _translation_available = _translation_route is not None
+    return _translation_route
+
+
+def _ensure_translation_route():
+    """Find Argos models and download the two required models once if missing."""
+    global _translation_route
+    if _translation_route:
+        return _translation_route
+    with _translation_lock:
+        if _translation_route:
+            return _translation_route
+        try:
+            _find_translation_route()
+            if _translation_route:
+                return _translation_route
+            import argostranslate.package as argos_package
+            print("Argos models missing; downloading Slovak → English and English → Ukrainian…")
+            argos_package.update_package_index()
+            wanted = {("sk", "en"), ("en", "uk")}
+            packages = [p for p in argos_package.get_available_packages()
+                        if (p.from_code, p.to_code) in wanted]
+            found = {(p.from_code, p.to_code) for p in packages}
+            missing = wanted - found
+            if missing:
+                raise RuntimeError(f"Argos packages not found: {sorted(missing)}")
+            for package in packages:
+                package.install()
+            _find_translation_route()
+            if _translation_route:
+                print("Argos translation models are ready.")
+        except Exception as exc:
+            print(f"Argos translation initialization failed: {exc}")
+        return _translation_route
+
+
+try:
+    _find_translation_route()
 except Exception as exc:
-    argos_translate = None
-    print(f"Argos translation initialization failed: {exc}")
+    print(f"Argos translation initialization deferred: {exc}")
 
 
 def get_model():
@@ -63,7 +103,7 @@ def wav_duration(path: Path) -> float:
 
 
 def translate_text(text: str) -> str:
-    if not text.strip() or not _translation_route:
+    if not text.strip() or not _ensure_translation_route():
         return ""
     try:
         translated = text
@@ -117,7 +157,10 @@ def finalize():
 
     try:
         model = get_model()
-        segments, info = model.transcribe(str(audio_path), language="sk", vad_filter=True)
+        segments, info = model.transcribe(
+            str(audio_path), language="sk", vad_filter=True, beam_size=5,
+            condition_on_previous_text=True, vad_parameters={"min_silence_duration_ms": 500}
+        )
         parts = []
         for segment in segments:
             text = segment.text.strip()
