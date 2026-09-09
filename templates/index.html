@@ -13,12 +13,20 @@
   <div class="grid"><div class="card"><h2>Словацький текст</h2><textarea id="sk" placeholder="Тут з’явиться транскрипція..."></textarea></div><div class="card"><h2>Український переклад</h2><textarea id="uk" placeholder="Тут з’явиться переклад..."></textarea></div></div>
   <div id="downloads" class="card" hidden><h2>Готові файли</h2><div class="row"><a id="audio" download><button class="secondary">Завантажити аудіо</button></a><a id="txt" download><button class="secondary">Завантажити словацький TXT</button></a><a id="uktxt" download><button class="secondary">Завантажити український TXT</button></a><a id="json" download><button class="secondary">Завантажити JSON із таймкодами</button></a></div></div>
 <script>
-let recorder, sessionId, recognition, liveText='', currentBlob;
+let recorder, sessionId, recognition, liveText='', currentBlob, translationQueue=Promise.resolve();
 const $=id=>document.getElementById(id), setStatus=x=>$('status').textContent=x;
+function translateLive(text){
+  translationQueue=translationQueue.then(async()=>{
+    try{
+      const r=await fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+      if(r.ok){const d=await r.json();$('uk').value+=(d.translation||'')+' ';}
+    }catch(e){}
+  });
+}
 function startSpeech(){
   if(!$('live').checked || !('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) return;
   const R=window.SpeechRecognition||window.webkitSpeechRecognition; recognition=new R(); recognition.lang='sk-SK'; recognition.continuous=true; recognition.interimResults=true;
-  recognition.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)liveText+=t+' ';else interim+=t;}$('sk').value=liveText+interim;};
+  recognition.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal){liveText+=t+' ';translateLive(t);}else interim+=t;}$('sk').value=liveText+interim;};
   recognition.onerror=()=>{};recognition.onend=()=>{if(recorder&&recorder.state==='recording')try{recognition.start()}catch(e){}};recognition.start();
 }
 $('start').onclick=async()=>{sessionId=crypto.randomUUID();liveText='';$('sk').value='';$('uk').value='';$('downloads').hidden=true;const stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);recorder.ondataavailable=e=>{if(e.data.size)currentBlob=e.data;};recorder.onstart=()=>{setStatus('Запис триває');$('start').disabled=true;$('pause').disabled=false;$('stop').disabled=false;};recorder.start();startSpeech();};
