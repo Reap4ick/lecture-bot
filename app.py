@@ -142,6 +142,7 @@ def upload_chunk():
 def finalize():
     payload = request.get_json(silent=True) or {}
     session_id = payload.get("session_id", "")
+    live_transcript = " ".join(str(payload.get("live_transcript", "")).split()).strip()
     session_dir = DATA_DIR / session_id
     if not session_id or not session_dir.exists():
         return jsonify(error="Сесію запису не знайдено"), 404
@@ -166,7 +167,11 @@ def finalize():
             text = segment.text.strip()
             if text:
                 parts.append({"start": round(segment.start, 2), "end": round(segment.end, 2), "text": text})
-        transcript = "\n".join(p["text"] for p in parts)
+        whisper_transcript = "\n".join(p["text"] for p in parts)
+        # Chrome/Edge often has a better online recognizer than a small local
+        # Whisper model. Keep it when the user enabled live text and it is
+        # substantial; otherwise use the local final transcription.
+        transcript = live_transcript if len(live_transcript) >= 30 else whisper_transcript
     except Exception as exc:
         return jsonify(error=f"Не вдалося запустити Whisper: {exc}"), 500
 
