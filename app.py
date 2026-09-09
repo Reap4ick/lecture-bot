@@ -23,19 +23,21 @@ _translation_route = None
 try:
     import argostranslate.translate as argos_translate
     installed_languages = argos_translate.get_installed_languages()
-    language_map = {language.code: language for language in installed_languages}
-    if "sk" in language_map and "uk" in language_map:
-        direct = language_map["sk"].get_translation(language_map["uk"])
-        if direct:
-            _translation_route = (direct,)
-    if _translation_route is None and "sk" in language_map and "en" in language_map and "uk" in language_map:
-        first = language_map["sk"].get_translation(language_map["en"])
-        second = language_map["en"].get_translation(language_map["uk"])
-        if first and second:
-            _translation_route = (first, second)
+    translations = {}
+    for language in installed_languages:
+        for translation in getattr(language, "translations", []):
+            source = getattr(getattr(translation, "from_lang", None), "code", None)
+            target = getattr(getattr(translation, "to_lang", None), "code", None)
+            if source and target:
+                translations[(source, target)] = translation
+    if ("sk", "uk") in translations:
+        _translation_route = (translations[("sk", "uk")],)
+    elif ("sk", "en") in translations and ("en", "uk") in translations:
+        _translation_route = (translations[("sk", "en")], translations[("en", "uk")])
     _translation_available = _translation_route is not None
-except Exception:
+except Exception as exc:
     argos_translate = None
+    print(f"Argos translation initialization failed: {exc}")
 
 
 def get_model():
@@ -70,6 +72,11 @@ def translate_text(text: str) -> str:
         return translated
     except Exception:
         return ""
+
+
+@app.get("/api/translation-status")
+def translation_status():
+    return jsonify(available=bool(_translation_route), route="sk→uk" if _translation_route and len(_translation_route) == 1 else ("sk→en→uk" if _translation_route else ""))
 
 
 @app.get("/")
