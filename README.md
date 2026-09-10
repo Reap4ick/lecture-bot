@@ -27,6 +27,16 @@ pip install -r requirements.txt
 python -c "import argostranslate.package as p; p.update_package_index(); pkgs=[x for x in p.get_available_packages() if (x.from_code,x.to_code) in {('sk','en'),('en','uk')}]; print([(x.from_code,x.to_code) for x in pkgs]); [x.install() for x in pkgs]"
 ```
 
+## DeepL для якіснішого live-перекладу
+
+Скопіюйте `deepl_keys.txt.example` у файл `deepl_keys.txt` і вставте свій DeepL API Free ключ у перший непорожній рядок. Сервер використовує лише один ключ і не перемикається між акаунтами. Файл `deepl_keys.txt` виключений із Git, тому ключ не буде опублікований у репозиторії.
+
+```cmd
+copy deepl_keys.txt.example deepl_keys.txt
+```
+
+Після цього запустіть `python app.py`. Якщо прапорець live-тексту ввімкнено, завершені фрагменти перекладаються через DeepL у реальному часі. Після завершення запису весь текст перекладається повторно одним запитом для кращого контексту. Якщо DeepL недоступний або ключ порожній, використовується локальний Argos.
+
 Застосунок спочатку шукає прямий маршрут `sk → uk`, а якщо його немає — автоматично використовує `sk → en → uk`. Якщо команда не знайде один із пакетів, запис і словацька транскрипція все одно працюватимуть; переклад можна виконувати окремо.
 
 ## Запуск

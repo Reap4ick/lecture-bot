@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 import wave
 from pathlib import Path
@@ -13,6 +17,7 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+DEEPL_KEY_FILE = BASE_DIR / "deepl_keys.txt"
 
 app = Flask(__name__)
 
@@ -103,7 +108,13 @@ def wav_duration(path: Path) -> float:
 
 
 def translate_text(text: str) -> str:
-    if not text.strip() or not _ensure_translation_route():
+    text = text.strip()
+    if not text:
+        return ""
+    deepl_result = translate_with_deepl(text)
+    if deepl_result:
+        return deepl_result
+    if not _ensure_translation_route():
         return ""
     try:
         translated = text
@@ -114,9 +125,46 @@ def translate_text(text: str) -> str:
         return ""
 
 
+def _read_deepl_key() -> str:
+    """Read only the first non-empty, non-comment key from the local file."""
+    if not DEEPL_KEY_FILE.exists():
+        return ""
+    for line in DEEPL_KEY_FILE.read_text(encoding="utf-8").splitlines():
+        value = line.strip()
+        if value and not value.startswith("#"):
+            return value
+    return ""
+
+
+def translate_with_deepl(text: str) -> str:
+    key = _read_deepl_key()
+    if not key:
+        return ""
+    payload = urllib.parse.urlencode({
+        "text": text,
+        "source_lang": "SK",
+        "target_lang": "UK",
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api-free.deepl.com/v2/translate",
+        data=payload,
+        headers={"Authorization": f"DeepL-Auth-Key {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        translations = result.get("translations", [])
+        return translations[0].get("text", "").strip() if translations else ""
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+        print(f"DeepL translation unavailable; using Argos fallback: {exc}")
+        return ""
+
+
 @app.get("/api/translation-status")
 def translation_status():
-    return jsonify(available=bool(_translation_route), route="sk→uk" if _translation_route and len(_translation_route) == 1 else ("sk→en→uk" if _translation_route else ""))
+    deepl = bool(_read_deepl_key())
+    return jsonify(deepl=deepl, argos=bool(_translation_route), route="DeepL" if deepl else ("sk→uk" if _translation_route and len(_translation_route) == 1 else ("sk→en→uk" if _translation_route else "")))
 
 
 @app.get("/")

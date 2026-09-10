@@ -1,0 +1,3 @@
+# Put your DeepL API Free key on the next line. The server uses only the first non-empty line.
+# Never commit the real key to GitHub.
+YOUR_DEEPL_API_KEY_HERE

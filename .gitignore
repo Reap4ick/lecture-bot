@@ -1,0 +1,5 @@
+deepl_keys.txt
+__pycache__/
+*.py[cod]
+data/
+.venv/
