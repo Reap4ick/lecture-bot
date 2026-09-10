@@ -125,21 +125,53 @@ def translate_text(text: str) -> str:
         return ""
 
 
-def _read_deepl_key() -> str:
-    """Read only the first non-empty, non-comment key from the local file."""
+def _read_deepl_keys() -> list[str]:
+    """Read non-empty, non-comment keys without printing or exposing them."""
     if not DEEPL_KEY_FILE.exists():
-        return ""
+        return []
+    keys = []
     for line in DEEPL_KEY_FILE.read_text(encoding="utf-8").splitlines():
         value = line.strip()
         if value and not value.startswith("#"):
-            return value
-    return ""
+            keys.append(value)
+    return keys
+
+
+def _read_deepl_key() -> str:
+    """Use the first configured key; key rotation is intentionally disabled."""
+    keys = _read_deepl_keys()
+    return keys[0] if keys else ""
+
+
+def _mask_deepl_key(key: str) -> str:
+    if len(key) <= 8:
+        return "****"
+    return f"{key[:4]}…{key[-4:]}"
+
+
+def check_deepl_keys() -> None:
+    """Check every configured key once at startup and log only safe diagnostics."""
+    keys = _read_deepl_keys()
+    if not keys:
+        print("DeepL: deepl_keys.txt not found or contains no keys; using Argos fallback.")
+        return
+    print(f"DeepL: checking {len(keys)} configured key(s) with SK → UK test: Ahoj")
+    for index, key in enumerate(keys, start=1):
+        result = _deepl_request("Ahoj", key)
+        if result:
+            print(f"DeepL key {index} ({_mask_deepl_key(key)}): OK → {result}")
+        else:
+            print(f"DeepL key {index} ({_mask_deepl_key(key)}): FAILED")
 
 
 def translate_with_deepl(text: str) -> str:
     key = _read_deepl_key()
     if not key:
         return ""
+    return _deepl_request(text, key)
+
+
+def _deepl_request(text: str, key: str) -> str:
     payload = urllib.parse.urlencode({
         "text": text,
         "source_lang": "SK",
@@ -250,4 +282,5 @@ def download(session_id: str, filename: str):
 
 
 if __name__ == "__main__":
+    check_deepl_keys()
     app.run(host="127.0.0.1", port=5000, debug=False)
