@@ -23,7 +23,8 @@ const $=id=>document.getElementById(id), setStatus=x=>$('status').textContent=x;
 const autoScroll={sk:true,uk:true};
 function nearBottom(el){return el.scrollHeight-el.scrollTop-el.clientHeight<36;}
 function watchScroll(id){const el=$(id);el.addEventListener('scroll',()=>{autoScroll[id]=nearBottom(el);});}
-function setText(id,value){const el=$(id);const follow=autoScroll[id]||nearBottom(el);el.value=value;if(follow){autoScroll[id]=true;el.scrollTop=el.scrollHeight;requestAnimationFrame(()=>{if(autoScroll[id])el.scrollTop=el.scrollHeight;});}}
+function scrollToLatest(el){const move=()=>{el.scrollTop=el.scrollHeight;el.scrollTo(0,el.scrollHeight);try{el.selectionStart=el.selectionEnd=el.value.length;}catch(e){}};move();requestAnimationFrame(move);setTimeout(move,0);setTimeout(move,40);}
+function setText(id,value){const el=$(id);const follow=autoScroll[id]||nearBottom(el);el.value=value;if(follow){autoScroll[id]=true;scrollToLatest(el);}}
 watchScroll('sk');watchScroll('uk');
   function showProcessing(text){$('processingText').textContent=text;$('processing').classList.add('visible');}
   function hideProcessing(){$('processing').classList.remove('visible');}
