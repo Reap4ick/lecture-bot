@@ -199,6 +199,13 @@ def translation_status():
     return jsonify(deepl=deepl, argos=bool(_translation_route), route="DeepL" if deepl else ("sk→uk" if _translation_route and len(_translation_route) == 1 else ("sk→en→uk" if _translation_route else "")))
 
 
+@app.post("/api/shutdown")
+def shutdown():
+    """Stop the local server; the PowerShell launcher then restores power settings."""
+    threading.Timer(0.5, os._exit, args=(0,)).start()
+    return jsonify(ok=True, message="Lecture Bot завершено. Налаштування живлення буде відновлено.")
+
+
 @app.get("/")
 def index():
     return render_template("index.html", translation_available=_translation_available)
