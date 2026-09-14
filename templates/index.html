@@ -5,10 +5,20 @@
   <title>Lecture Bot</title>
   <style>
     body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:24px;background:#f5f7fb;color:#18202a}h1{margin-bottom:4px}.muted{color:#5d6875}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0}button{border:0;border-radius:9px;padding:11px 16px;font-weight:650;cursor:pointer;background:#1769e0;color:white}button.secondary{background:#dce6f7;color:#15335e}button.danger{background:#c93636}button:disabled{opacity:.5;cursor:not-allowed}.card{background:white;border-radius:14px;padding:18px;box-shadow:0 2px 12px #20304012;margin-top:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:800px){.grid{grid-template-columns:1fr}}textarea{width:100%;min-height:360px;box-sizing:border-box;border:1px solid #ccd5e2;border-radius:9px;padding:12px;font:15px/1.5 ui-monospace,monospace;resize:vertical}#status{font-weight:650}.pill{display:inline-block;padding:5px 9px;border-radius:99px;background:#edf2fa;font-size:13px}a{text-decoration:none}.processing{display:none;align-items:center;gap:10px;margin-top:14px;padding:12px 14px;border-radius:10px;background:#eef5ff;color:#174b91}.processing.visible{display:flex}.spinner{width:16px;height:16px;border:3px solid #bdd2f2;border-top-color:#1769e0;border-radius:50%;animation:spin .8s linear infinite;flex:none}@keyframes spin{to{transform:rotate(360deg)}}
+
+    :root{color-scheme:light;--bg:#f5f7fb;--text:#18202a;--muted:#5d6875;--card:#fff;--border:#ccd5e2;--shadow:#20304012;--secondary:#dce6f7;--secondary-text:#15335e;--input:#fff;}
+    html.dark{color-scheme:dark;--bg:#111827;--text:#e5e7eb;--muted:#aab4c2;--card:#1f2937;--border:#4b5563;--shadow:#0008;--secondary:#374151;--secondary-text:#e5e7eb;--input:#111827;}
+    body{background:var(--bg);color:var(--text)}
+    .muted{color:var(--muted)}
+    .card{background:var(--card);box-shadow:0 2px 12px var(--shadow)}
+    textarea{background:var(--input);color:var(--text);border-color:var(--border)}
+    button.secondary{background:var(--secondary);color:var(--secondary-text)}
+    .theme-toggle{margin-left:auto;background:var(--secondary);color:var(--secondary-text);padding:8px 12px}
+    .theme-icon{font-size:16px;margin-right:5px}
   </style>
 </head>
 <body>
-  <h1>Lecture Bot</h1><div class="muted">Локальний запис лекції зі словацькою транскрипцією та перекладом українською.</div>
+  <div class="row" style="margin-top:0"><h1 style="margin-right:auto">Lecture Bot</h1><button id="themeToggle" class="secondary theme-toggle" type="button"><span class="theme-icon">☾</span> Темна тема</button></div><div class="muted">Локальний запис лекції зі словацькою транскрипцією та перекладом українською.</div>
   <div class="card"><div class="row"><button id="start">● Почати запис</button><button id="pause" class="secondary" disabled>Пауза</button><button id="stop" class="danger" disabled>Зупинити й обробити</button><span id="status" class="pill">Готово</span></div><label><input id="live" type="checkbox"> показувати попередній live-текст (може бути неточним)</label><div id="processing" class="processing" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="processingText">Підготовка обробки…</span></div><p class="muted">Аудіо зберігається фрагментами в IndexedDB браузера, тому під час довгого запису не накопичується одним великим об’єктом у RAM. Найточніший текст і переклад з’являться після натискання «Зупинити й обробити».</p></div>
   <div class="grid"><div class="card"><h2>Словацький текст</h2><textarea id="sk" placeholder="Тут з’явиться транскрипція..."></textarea></div><div class="card"><h2>Український переклад</h2><textarea id="uk" placeholder="Тут з’явиться переклад..."></textarea></div></div>
   <div id="downloads" class="card" hidden><h2>Готові файли</h2><div class="row"><a id="audio" download><button class="secondary">Завантажити аудіо</button></a><a id="txt" download><button class="secondary">Завантажити словацький TXT</button></a><a id="uktxt" download><button class="secondary">Завантажити український TXT</button></a><a id="json" download><button class="secondary">Завантажити JSON із таймкодами</button></a></div></div>
@@ -20,6 +30,11 @@ async function clearRecordingDb(){const db=await openRecordingDb();return new Pr
 async function saveRecordingChunk(blob){const db=await openRecordingDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).add({sessionId,blob});tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);});}
 async function loadRecordingBlob(){const db=await openRecordingDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const r=tx.objectStore(STORE).getAll();r.onsuccess=()=>{db.close();resolve(new Blob(r.result.filter(x=>x.sessionId===sessionId).map(x=>x.blob),{type:'audio/webm'}));};r.onerror=()=>reject(r.error);});}
 const $=id=>document.getElementById(id), setStatus=x=>$('status').textContent=x;
+const themeToggle=$('themeToggle');
+function applyTheme(theme){document.documentElement.classList.toggle('dark',theme==='dark');localStorage.setItem('lecture-bot-theme',theme);themeToggle.innerHTML=theme==='dark'?'<span class="theme-icon">☀</span> Світла тема':'<span class="theme-icon">☾</span> Темна тема';}
+applyTheme(localStorage.getItem('lecture-bot-theme')||'light');
+themeToggle.onclick=()=>applyTheme(document.documentElement.classList.contains('dark')?'light':'dark');
+
 const autoScroll={sk:true,uk:true};
 function nearBottom(el){return el.scrollHeight-el.scrollTop-el.clientHeight<36;}
 function watchScroll(id){const el=$(id);el.addEventListener('scroll',()=>{autoScroll[id]=nearBottom(el);});}
