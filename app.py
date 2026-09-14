@@ -223,6 +223,7 @@ def finalize():
     payload = request.get_json(silent=True) or {}
     session_id = payload.get("session_id", "")
     live_transcript = " ".join(str(payload.get("live_transcript", "")).split()).strip()
+    quick_mode = bool(payload.get("quick_mode", False)) and len(live_transcript) >= 30
     session_dir = DATA_DIR / session_id
     if not session_id or not session_dir.exists():
         return jsonify(error="Сесію запису не знайдено"), 404
@@ -236,30 +237,32 @@ def finalize():
         for chunk in chunks:
             out.write(chunk.read_bytes())
 
-    try:
-        model = get_model()
-        segments, info = model.transcribe(
-            str(audio_path), language="sk", vad_filter=True, beam_size=5,
-            condition_on_previous_text=True, vad_parameters={"min_silence_duration_ms": 500}
-        )
-        parts = []
-        for segment in segments:
-            text = segment.text.strip()
-            if text:
-                parts.append({"start": round(segment.start, 2), "end": round(segment.end, 2), "text": text})
-        whisper_transcript = "\n".join(p["text"] for p in parts)
-        # Chrome/Edge often has a better online recognizer than a small local
-        # Whisper model. Keep it when the user enabled live text and it is
-        # substantial; otherwise use the local final transcription.
-        transcript = live_transcript if len(live_transcript) >= 30 else whisper_transcript
-    except Exception as exc:
-        return jsonify(error=f"Не вдалося запустити Whisper: {exc}"), 500
+    if quick_mode:
+        # The browser's live recognizer already produced the text. Do not make
+        # the user wait for a second full pass through a local Whisper model.
+        transcript = live_transcript
+        parts = [{"start": 0, "end": wav_duration(audio_path), "text": transcript}]
+    else:
+        try:
+            model = get_model()
+            segments, info = model.transcribe(
+                str(audio_path), language="sk", vad_filter=True, beam_size=5,
+                condition_on_previous_text=True, vad_parameters={"min_silence_duration_ms": 500}
+            )
+            parts = []
+            for segment in segments:
+                text = segment.text.strip()
+                if text:
+                    parts.append({"start": round(segment.start, 2), "end": round(segment.end, 2), "text": text})
+            transcript = "\n".join(p["text"] for p in parts)
+        except Exception as exc:
+            return jsonify(error=f"Не вдалося запустити Whisper: {exc}"), 500
 
     translated = translate_text(transcript)
     (session_dir / "transcript_sk.txt").write_text(transcript, encoding="utf-8")
     (session_dir / "transcript_uk.txt").write_text(translated, encoding="utf-8")
     (session_dir / "transcript_sk.json").write_text(__import__("json").dumps(parts, ensure_ascii=False, indent=2), encoding="utf-8")
-    return jsonify(ok=True, session_id=session_id, transcript=transcript, translation=translated, segments=parts, duration=wav_duration(audio_path))
+    return jsonify(ok=True, session_id=session_id, transcript=transcript, translation=translated, segments=parts, duration=wav_duration(audio_path), quick_mode=quick_mode)
 
 
 @app.post("/api/translate")
